@@ -25,7 +25,7 @@ def smooth_seg(segsmooth_bin, original_seg, smooth_seg, tags_list, target_res, f
           (segsmooth_bin, 
            original_seg, 
            smooth_seg, 
-           tags_list, 
+           " ".join(str(t) for t in tags_list), 
            fuzz_factor,
            "".join((str(voxel_padding)+' ')*3),
            "".join((str(target_res)+' ')*3))
