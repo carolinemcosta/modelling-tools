@@ -10,6 +10,38 @@ from typing import Tuple
 from carputils.carpio import igb
 
 
+def read_ecg_from_precision(file_name):
+    """ Read 12-lead ECG data from Precision's CSV file and store as ecg dictionary
+      Parameters:
+        file_name (string): name of input file
+      Return:
+        ecg (dict): dict with ECG data
+        t_steps (array): time steps
+
+      by Caroline Mendonca Costa
+    """
+
+    # skip the first 86 rows - rubbish
+    data = pd.read_csv(file_name, header=0, skiprows=86, skipfooter=1, engine='python', sep=',').values.squeeze()
+
+    t_steps = data[:, 2]
+
+    ecg = {'LI': data[:, 3],
+           'LII': data[:, 6],
+           'LIII': data[:, 9],
+           'aVR': data[:, 12],
+           'aVL': data[:, 15],
+           'aVF': data[:, 18],
+           'V1': data[:, 21],
+           'V2': data[:, 24],
+           'V3': data[:, 27],
+           'V4': data[:, 30],
+           'V5': data[:, 33],
+           'V6': data[:, 36]}
+
+    return ecg, t_steps
+
+
 def get_torso_electrode_phie(phie_data, elec_name):
     """ Get Phie over time at the torso electrode locations.
         Only for torso models with electrodes within the mesh.
@@ -174,39 +206,7 @@ def write_ecg_to_data_file(file_name, ecg, t_steps):
     np.savetxt(file_name, array.T, delimiter=' ')
 
 
-def read_ecg_from_precision(file_name):
-    """ Read 12-lead ECG data from Precision's CSV file and store as ecg dictionary
-      Parameters:
-        file_name (string): name of input file
-      Return:
-        ecg (dict): dict with ECG data
-        t_steps (array): time steps
-
-      by Caroline Mendonca Costa
-    """
-  
-    # skip the first 86 rows - rubbish
-    data = pd.read_csv(file_name, header=0, skiprows=86, skipfooter=1, engine='python', sep=',').values.squeeze()
-
-    t_steps = data[:, 2]
-
-    ecg = {'LI': data[:, 3],
-           'LII': data[:, 6],
-           'LIII': data[:, 9],
-           'aVR': data[:, 12],
-           'aVL': data[:, 15],
-           'aVF': data[:, 18],
-           'V1': data[:, 21],
-           'V2': data[:, 24],
-           'V3': data[:, 27],
-           'V4': data[:, 30],
-           'V5': data[:, 33],
-           'V6': data[:, 36]}
-
-    return ecg, t_steps
-
-
-def get_ecg_from_file(ecg_file):
+def read_ecg_from_data_file(ecg_file):
     """ Read ECG leads from data file
         Assumes format: tsteps LI LII LIII aVR aVL aVF V1 V2 V3 V4 V5 V6
       Parameters

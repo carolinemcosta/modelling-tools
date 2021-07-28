@@ -276,12 +276,12 @@ def fit_cv_to_total_act(sim_dir, sim_id, cv_list, qrs_d, base_vtx_file):
 
         # get min difference - will return only the first occurrence
         min_diff_idx = np.argmin(total_act_qrs_diff)
-        best_total_act = total_act_list[min_diff_idx]
 
-        # best CVs
+        # best CVs and total act
         best_cv_lon = cv_list[min_diff_idx]
         best_cv_trans = 0.45 * best_cv_lon
         best_cv_bz = 0.5 * best_cv_trans
+        best_total_act = total_act_list[min_diff_idx]
 
         # write total act fit to file
         with open(fit_file_name, 'w+') as f:
@@ -290,6 +290,106 @@ def fit_cv_to_total_act(sim_dir, sim_id, cv_list, qrs_d, base_vtx_file):
         best_cv_lon = np.loadtxt(fit_file_name, usecols=2, dtype=float)
 
     return best_cv_lon
+
+def fit_cv_to_qrs(sim_dir, sim_id, cv_list, data_qrs_d, sim_qrs_d):
+    """
+
+    Args:
+        sim_dir (str): name of simulation directory
+        sim_id (str): name of simulation ID (folder)
+        cv_list (list): list with all CVs to simulate
+        data_qrs_d (float): experimental QRS duration
+        sim_qrs_d (list): simulated QRS duration
+
+    Returns:
+        best_cv_lon (float): best fit longitudinal CV
+    """
+
+    fit_file_name = sim_dir + sim_id + "-qrs-fit.dat"
+    if not os.path.isfile(fit_file_name):
+        print("Computing best CV using QRSd...")
+
+        # get min difference - will return only the first occurrence
+        qrs_diff = np.abs(sim_qrs_d - data_qrs_d)
+        min_diff_idx = np.argmin(qrs_diff)
+
+        # best CVs and QRSd
+        best_cv_lon = cv_list[min_diff_idx]
+        best_cv_trans = 0.45 * best_cv_lon
+        best_cv_bz = 0.5 * best_cv_trans
+        best_qrs_d = qrs_diff[min_diff_idx]
+
+        # write total act fit to file
+        with open(fit_file_name, 'w+') as f:
+            f.write("{:f} {:f} {:f} {:f} {:f}\n".format(data_qrs_d, best_qrs_d, best_cv_lon, best_cv_trans, best_cv_bz))
+    else:
+        best_cv_lon = np.loadtxt(fit_file_name, usecols=2, dtype=float)
+
+    return best_cv_lon
+
+
+def compute_ecg_and_qrsd(sim_dir, sim_id, cv_list, vcg_thresh):
+    """
+    Compute the 12-lead ECG from simulated phie_recovery file and compute QRSd using VCG spatial velocity method
+    Args:
+        sim_dir (str): name of simulation directory
+        sim_id (str): name of simulation ID (folder)
+        cv_list (list): list with all CVs to simulate
+        vcg_thresh (float): spatial velocity threshold for VCG-based QRSd calculation
+
+    Returns:
+        qrd_d (array): array with QRSd for each simulation. Shape=len(cv_list)
+        flag (bool): array with boolean flag to check if any simulations are missing. Shape=len(cv_list)
+    """
+
+    print("Computing ECG and QRS duration...")
+
+    # initialize arrays
+    n_cv = len(cv_list)
+    qrs_d = np.zeros((n_cv,), dtype=float)
+    flag = np.ones((n_cv,), dtype=bool)
+
+    # compute ECG and QRSd for each simulation
+    for i in range(n_cv):
+        cv_sim_id = "{}-{:1.2f}".format(sim_id, cv_list[i])
+        phie_file = sim_dir + cv_sim_id + "/phie_recovery.igb"
+        if os.path.isfile(phie_file):
+            ecg_file = sim_dir + cv_sim_id + '/12-lead-ecg.csv'
+            if not os.path.isfile(ecg_file):
+                # compute ECG from electrode data
+                elec_data, t_steps = et.get_electrodes_from_phie_rec_file(phie_file)
+                ecg = et.convert_electrodes_to_ecg(elec_data)
+
+                # save ECG
+                ecg_file = sim_dir + cv_sim_id + "/12-lead-ecg.csv"
+                et.write_ecg_to_data_file(ecg_file, ecg, t_steps)
+            else:
+                # TODO: check that the saved ECGs have the time steps too
+                ecg, t_steps = et.read_ecg_from_data_file(ecg_file)
+
+            # convert normalized ECG to VCG
+            norm_ecg = et.normalize_ecg(ecg)
+            vcg = vcg_analysis.convert_ecg_to_vcg(norm_ecg)
+
+            # TODO test that this works with this dt. Unit?
+            # Compute QRSd using VCG method
+            dt = t_steps[1] - t_steps[0]
+            t_end = len(t_steps) * dt
+            qrs_start, qrs_end, qrs_d[i] = vcg_analysis.get_qrs_start_end(vcg, dt=dt, velocity_offset=2, low_p=40, order=2,
+                                                                          threshold_frac_start=vcg_thresh,
+                                                                          threshold_frac_end=vcg_thresh, filter_sv=True,
+                                                                          t_end=t_end, matlab_match=False)
+
+            # save QRSd to file
+            qrsd_file = sim_dir + cv_sim_id + '/qrsd.dat'
+            if not os.path.isfile(qrsd_file):
+                np.savetxt(qrsd_file, [qrs_start, qrs_end, qrs_d[i]], delimiter=' ', fmt='%1.6f')
+
+        else:  # if phie is missing return flag with false
+            flag[i] = False
+
+    return qrs_d, flag
+
 
 def main():
     print("test")
