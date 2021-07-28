@@ -326,8 +326,6 @@ def plot_ecg_qrs_qt(t_steps, ecg, qrs_start, qrs_end, qt_int, show_fig, fig_name
     """
   
     # end of QT interval
-    if y_lim is None:
-        y_lim = []
     qt_end = qrs_start + qt_int
 
     plt.rcParams['font.size'] = '16'
