@@ -139,28 +139,39 @@ def compute_total_base_act(act_file, base_vtx_file):
         base_vtx_file (str): name of file with base vertices (ext = .vtx)
 
     Returns:
-        tact (float): total activation time at the base
+        total_act (float): total activation time at the base
 
     """
 
     act_file_pp = act_file + "-pp.dat"
-    tact_file = act_file + "-pp.TACTbase"
-    if not os.path.isfile(tact_file):
+    total_act_file = act_file + "-pp.total_act"
+    if not os.path.isfile(total_act_file):
         base_nodes = np.loadtxt(base_vtx_file, skiprows=2, dtype=int)
         act = np.loadtxt(act_file_pp)
-        # get myo TACT
-        tact = np.amax(act[base_nodes])
-        # save TACT
-        with open(tact_file, 'w+') as f:
-            f.write("{:f}".format(tact))
+        # get myo total activation
+        total_act = np.amax(act[base_nodes])
+        # save total act
+        with open(total_act_file, 'w+') as f:
+            f.write("{:f}".format(total_act))
     else:
-        tact = np.loadtxt(tact_file, dtype=float)
+        total_act = np.loadtxt(total_act_file, dtype=float)
 
-    return tact
+    return total_act
 
 def get_rv_pacing_location(mesh_name, uvc_dir, rv_septum_vtx):
-    pac_loc_vtx_file = uvc_dir + "rvseptpl.vtx"
-    pac_loc_pts_file = uvc_dir + "rvseptpl.pts_t"
+    """
+    Compute RV pacing location on BIV mesh using UVC
+    Args:
+        mesh_name (string): name of mesh file
+        uvc_dir (string): name of directory with UVC files
+        rv_septum_vtx (str): name of .vtx file with RV septum node(s)
+
+    Returns:
+        rv_pac_loc_node (ind): node number of RV pacing location on BIV mesh septum
+    """
+
+    pac_loc_vtx_file = uvc_dir + "rv_sept_pac_loc.vtx"
+    pac_loc_pts_file = uvc_dir + "rv_sept_pac_loc.pts_t"
     if not os.path.isfile(pac_loc_pts_file):
         print("Computing BiV pacing location...\n")
 
@@ -183,26 +194,102 @@ def get_rv_pacing_location(mesh_name, uvc_dir, rv_septum_vtx):
             f.write("1\n1\n{:f} {:f} {:f}".format(mesh_pts[rv_pac_loc_node, 0], mesh_pts[rv_pac_loc_node, 1],
                                                   mesh_pts[rv_pac_loc_node, 2]))
     else:
-        rv_pac_loc_node = np.loadtxt(uvc_dir + "rvseptpl.vtx", skiprows=2, dtype=int)
+        rv_pac_loc_node = np.loadtxt(pac_loc_vtx_file, skiprows=2, dtype=int)
 
     return rv_pac_loc_node
 
 
 def get_rv_pacing_location_lv(mesh_name, uvc_dir):
-    print("Computing LV pacing location...\n")
+    """
+    Compute RV pacing location on LV mesh using UVC
+    Args:
+        mesh_name (string): name of mesh file
+        uvc_dir (string): name of directory with UVC files
 
-    # load mesh points
-    mesh_pts = np.loadtxt(mesh_name + ".pts", skiprows=1, dtype=float)
+    Returns:
+        rv_pac_loc_node (ind): node number of RV pacing location on LV mesh septum
+    """
 
-    # load rv sept pacing location from BiV mesh
-    biv_pac_loc_pts_file = uvc_dir + "rvseptpl.pts_t"
-    biv_pac_loc = np.loadtxt(biv_pac_loc_pts_file, skiprows=2, dtype=float)
+    pac_loc_vtx_file = uvc_dir + "rv_sept_pac_loc_lv.vtx"
+    pac_loc_pts_file = uvc_dir + "rv_sept_pac_loc_lv.pts_t"
+    if not os.path.isfile(pac_loc_pts_file):
+        print("Computing LV pacing location...\n")
 
-    # find closest point in LV mesh
-    rv_pac_loc = np.sum((mesh_pts - biv_pac_loc) ** 2, axis=1).argmin()
+        # load mesh points
+        mesh_pts = np.loadtxt(mesh_name + ".pts", skiprows=1, dtype=float)
 
-    return rv_pac_loc
+        # load rv sept pacing location from BiV mesh
+        biv_pac_loc_pts_file = uvc_dir + "rv_sept_pac_loc.pts_t"
+        biv_pac_loc_node = np.loadtxt(biv_pac_loc_pts_file, skiprows=2, dtype=float)
 
+        # find closest point in LV mesh
+        rv_pac_loc_node = np.sum((mesh_pts - biv_pac_loc_node) ** 2, axis=1).argmin()
+
+        # write out files
+        with open(pac_loc_vtx_file, "w") as f:
+            f.write("1\nextra\n{:d}".format(rv_pac_loc_node))
+        with open(pac_loc_pts_file, "w") as f:
+            f.write("1\n1\n{:f} {:f} {:f}".format(mesh_pts[rv_pac_loc_node, 0], mesh_pts[rv_pac_loc_node, 1],
+                                                  mesh_pts[rv_pac_loc_node, 2]))
+    else:
+        rv_pac_loc_node = np.loadtxt(pac_loc_vtx_file, skiprows=2, dtype=int)
+
+    return rv_pac_loc_node
+
+
+def fit_cv_to_total_act(sim_dir, sim_id, cv_list, qrs_d, base_vtx_file):
+    """
+    Fit the CV from ekbatch simulations based using the simulated total activation time and experimental QRS duration
+    Args:
+        sim_dir (str): name of simulation directory
+        sim_id (str): name of simulation ID (folder)
+        cv_list (list): list with all CVs to simulate
+        qrs_d (float): experimental QRS duration
+        base_vtx_file (str): name of .vtx file with base nodes
+
+    Returns:
+        best_cv_lon (float): best fit longitudinal CV
+
+    """
+
+    fit_file_name = sim_dir + sim_id + "-total-act-fit.dat"
+    if not os.path.isfile(fit_file_name):
+        print("Computing best CV using total activation time")
+
+        # initialize arrays
+        total_act_list = np.zeros(len(cv_list))
+        total_act_qrs_diff = np.zeros(len(cv_list))
+        indices = np.arange(len(cv_list))
+
+        # compute difference between the total activation for each CV and the experimental QRS duration
+        for i in indices:
+            # remove inf values
+            file_name = sim_dir + sim_id + "-{:1.2f}".format(cv_list[i])
+            post_process_act(file_name)
+
+            # get base total act
+            total_act = compute_total_base_act(file_name, base_vtx_file)
+
+            # compare with QRSd
+            total_act_qrs_diff[i] = abs(qrs_d - total_act)
+            total_act_list[i] = total_act
+
+        # get min difference - will return only the first occurrence
+        min_diff_idx = np.argmin(total_act_qrs_diff)
+        best_total_act = total_act_list[min_diff_idx]
+
+        # best CVs
+        best_cv_lon = cv_list[min_diff_idx]
+        best_cv_trans = 0.45 * best_cv_lon
+        best_cv_bz = 0.5 * best_cv_trans
+
+        # write total act fit to file
+        with open(fit_file_name, 'w+') as f:
+            f.write("{:f} {:f} {:f} {:f} {:f}\n".format(qrs_d, best_total_act, best_cv_lon, best_cv_trans, best_cv_bz))
+    else:
+        best_cv_lon = np.loadtxt(fit_file_name, usecols=2, dtype=float)
+
+    return best_cv_lon
 
 def main():
     print("test")
