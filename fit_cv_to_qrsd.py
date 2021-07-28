@@ -7,7 +7,7 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, dir_path)
 
 import vcg_analysis as vg
-import ECG_tools as et
+import ecg_tools as et
 
 
 def create_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv):

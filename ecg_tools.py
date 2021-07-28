@@ -2,11 +2,16 @@ import pandas as pd
 import csv
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+import os
 
 from typing import Tuple
 
+# insert packages/modules from PYTHONPATH
+dir_path = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, dir_path)
+
 # included with carpentry or openCARP https://opencarp.org/
-# must set in PYTHONPATH
 from carputils.carpio import igb
 
 
