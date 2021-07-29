@@ -6,7 +6,7 @@ def generate_header(n_cores, job_name, time_limit):
     Args:
         n_cores (int): number of CPU cores
         job_name (str): name of job on SLURM script. Must be less than 8 characters long.
-        time_limit: simulation time limit in hours. Less than 76 hours is recommended
+        time_limit (int): simulation time limit in hours. Less than 76 hours is recommended
 
     Returns:
         header (str): header of SLURM script
@@ -22,8 +22,8 @@ def generate_header(n_cores, job_name, time_limit):
     # build header
     header = "\n".join(["#!/bin/bash",
                         "#SBATCH -p compute",
-                        "# SBATCH -J {}".format(job_name),
-                        "SBATCH -t 0-{:d}:00:00".format(time_limit),
+                        "#SBATCH -J {}".format(job_name),
+                        "#SBATCH -t 0-{:d}:00:00".format(time_limit),
                         "#SBATCH --nodes={:d}".format(n_nodes),
                         "#SBATCH --ntasks-per-node={:d}".format(n_tasks),
                         "\nexport OMP_NUM_THREADS = 1\n"
@@ -50,7 +50,7 @@ def add_job_array_options(n_cores, start_nbr, end_nbr, core_limit=512):
             'core_limit (={:d}) divided by # cores (={:d}) smaller than 2. Cannot set array job'.format(core_limit,
                                                                                                         n_cores))
 
-    batch_size = int(math.floor(core_limit / n_cores)) # number of jobs to run in batch
+    batch_size = int(math.floor(core_limit / n_cores))  # number of jobs to run in batch
     job_array = "#SBATCH --array=[{:d}-{:d}]%{:d}\n".format(start_nbr, end_nbr, batch_size)
 
     return job_array

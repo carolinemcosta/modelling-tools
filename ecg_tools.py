@@ -1,19 +1,12 @@
-import pandas as pd
 import csv
-import numpy as np
+
 import matplotlib.pyplot as plt
-import sys
-import os
+import numpy as np
+import pandas as pd
+
+from carputils.carpio import igb  # included with carpentry or openCARP https://opencarp.org/
 
 from typing import Tuple
-
-# insert packages/modules from PYTHONPATH
-dir_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.insert(0, dir_path)
-
-# included with carpentry or openCARP https://opencarp.org/
-from carputils.carpio import igb
-
 
 def read_ecg_from_precision(file_name):
     """ Read 12-lead ECG data from Precision's CSV file and store as ecg dictionary

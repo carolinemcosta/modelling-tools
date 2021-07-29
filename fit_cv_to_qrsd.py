@@ -1,16 +1,11 @@
-import numpy as np
-import sys
 import os
+import numpy as np
 
-# insert packages/modules from PYTHONPATH
-dir_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.insert(0, dir_path)
-
-import vcg_analysis as vg
 import ecg_tools as et
+import slurm_tools as st
+import vcg_analysis as vg
 
-
-def create_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv):
+def write_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv):
     """ Build and write init file for ekbatch simulation
 
     Args:
@@ -62,7 +57,7 @@ def create_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv):
             f.write(script)
 
 
-def run_ekbatch(ekbatch_exec, mesh_name, sim_dir, sim_id, uvc_dir, rv_septum_vtx, cv_list, biv):
+def create_ekbatch_cmd_line(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, cv_list, biv, tags):
     """
     Run ekbatch locally simulation with all CVs in cv_vector
     Args:
@@ -70,28 +65,20 @@ def run_ekbatch(ekbatch_exec, mesh_name, sim_dir, sim_id, uvc_dir, rv_septum_vtx
         mesh_name (str): name of the mesh file
         sim_dir (str): name of simulation directory
         sim_id (str): name of simulation ID (folder)
-        uvc_dir (str): name of directory with UVC files
-        rv_septum_vtx (str): name of .vtx file with RV septum node(s)
+        stim_node (int): node number of RV pacing location on BIV mesh septum
         cv_list (list): list with all CVs to simulate
         biv (bool): consider bi-ventricular mesh if true
+        tags (dict): tags definition for each mesh region
 
     Returns:
         Writes command line on terminal and run simulation
     """
-    # read stim node
-    if biv:
-        stim_node = get_rv_pacing_location(mesh_name, uvc_dir, rv_septum_vtx)
-    else:
-        stim_node = get_rv_pacing_location_lv(mesh_name, uvc_dir)
-
-    # define tags
-    tags = {'he': 2, 'bz': 6, 'rv': 9, 'he_fec': 202, 'bz_fec': 206, 'sc_fec': 205, 'rv_fec': 209}
 
     # generate init file for each cv_lon
     files = list()
     for cv_lon in cv_list:
-        file_name = sim_dir + sim_id + "-{:1.2f}".format(cv_lon)
-        create_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv)
+        file_name = "{}/{}_{:1.2f}".format(sim_dir, sim_id, cv_lon)
+        write_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv)
         files.append(file_name)
 
     # build command line
@@ -105,9 +92,25 @@ def run_ekbatch(ekbatch_exec, mesh_name, sim_dir, sim_id, uvc_dir, rv_septum_vtx
         cmd = "{} {} {} {:d},{:d},{:d},{:d},{:d}".format(ekbatch_exec, mesh_name, all_files,
                                                          tags['he'], tags['bz'],
                                                          tags['he_fec'], tags['bz_fec'], tags['sc_fec'])
-    # run sim
-    print(cmd)
-    os.system(cmd)
+
+    return cmd
+
+def write_ekbatch_slurm(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, cv_list, biv, tags,
+                        job_name, script_name, n_cores, time_limit):
+
+    # build header
+    header = st.generate_header(n_cores, job_name, time_limit)
+
+    # source modules from bashrc
+    bash = st.source_bashrc()
+
+    # build command line
+    cmd = create_ekbatch_cmd_line(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, cv_list, biv, tags)
+
+    # write script
+    script = "\n\n".join([header, bash, cmd])
+    with open(script_name, 'w') as f:
+        f.write(script)
 
 
 def post_process_act(file_name):
@@ -157,6 +160,7 @@ def compute_total_base_act(act_file, base_vtx_file):
         total_act = np.loadtxt(total_act_file, dtype=float)
 
     return total_act
+
 
 def get_rv_pacing_location(mesh_name, uvc_dir, rv_septum_vtx):
     """
@@ -291,6 +295,7 @@ def fit_cv_to_total_act(sim_dir, sim_id, cv_list, qrs_d, base_vtx_file):
 
     return best_cv_lon
 
+
 def fit_cv_to_qrs(sim_dir, sim_id, cv_list, data_qrs_d, sim_qrs_d):
     """
 
@@ -369,16 +374,17 @@ def compute_ecg_and_qrsd(sim_dir, sim_id, cv_list, vcg_thresh):
 
             # convert normalized ECG to VCG
             norm_ecg = et.normalize_ecg(ecg)
-            vcg = vcg_analysis.convert_ecg_to_vcg(norm_ecg)
+            vcg = vg.convert_ecg_to_vcg(norm_ecg)
 
             # TODO test that this works with this dt. Unit?
             # Compute QRSd using VCG method
             dt = t_steps[1] - t_steps[0]
             t_end = len(t_steps) * dt
-            qrs_start, qrs_end, qrs_d[i] = vcg_analysis.get_qrs_start_end(vcg, dt=dt, velocity_offset=2, low_p=40, order=2,
-                                                                          threshold_frac_start=vcg_thresh,
-                                                                          threshold_frac_end=vcg_thresh, filter_sv=True,
-                                                                          t_end=t_end, matlab_match=False)
+            qrs_start, qrs_end, qrs_d[i] = vg.get_qrs_start_end(vcg, dt=dt, velocity_offset=2, low_p=40,
+                                                                order=2,
+                                                                threshold_frac_start=vcg_thresh,
+                                                                threshold_frac_end=vcg_thresh, filter_sv=True,
+                                                                t_end=t_end, matlab_match=False)
 
             # save QRSd to file
             qrsd_file = sim_dir + cv_sim_id + '/qrsd.dat'
@@ -391,8 +397,134 @@ def compute_ecg_and_qrsd(sim_dir, sim_id, cv_list, vcg_thresh):
     return qrs_d, flag
 
 
+def create_re_phie_cmd_line(carp_exec, n_cores, intra_mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags):
+    """
+    Create command lines for Reaction Eikonal and Phie recovery simulations
+    Args:
+        carp_exec (str): (path +) name of carp (or carpentry) executable
+        n_cores (int): number of cpu cores to run simulations
+        intra_mesh_name (str): name of intracellular mesh
+        sim_dir (str): name of simulation directory
+        sim_id (str): name of simulation ID (folder)
+        electrode_file (str): name of file with ECG electrode coordinates
+        stim_file (str): name of stimulus file (extension .vtx)
+        tags (dict): dictionary defining mesh tags
+
+    Returns:
+        re_cmd (str): reaction eikonal command line
+        rec_cmd (str): phie recovery command line (used together with re_cmd)
+
+    """
+    # build command line
+    imp = " ".join(["-num_imp_regions 1",
+                    "-imp_region[0].num_IDs 7",
+                    "-imp_region[0].ID[0] {}".format(tags['he']),
+                    "-imp_region[0].ID[1] {}".format(tags['bz']),
+                    "-imp_region[0].ID[2] {}".format(tags['rv']),
+                    "-imp_region[0].ID[3] {}".format(tags['he_fec']),
+                    "-imp_region[0].ID[4] {}".format(tags['bz_fec']),
+                    "-imp_region[0].ID[5] {}".format(tags['sc_fec']),
+                    "-imp_region[0].ID[6] {}".format(tags['rv_fec']),
+                    "-imp_region[0].im TT2"
+                    ])
+
+    num = " ".join(["-diffusionOn 0",
+                    "-mass_lumping 0",
+                    "-tend 500.0",
+                    "-dt 100.0",
+                    "-spacedt 5"
+                    ])
+
+    stim = " ".join(["-num_stim 2",
+                     "-stimulus[0].stimtype 8",
+                     "-stimulus[0].data_file {}".format(stim_file),
+                     "-stimulus[1].stimtype 8",
+                     "-stimulus[1].duration 2.0"
+                     ])
+
+    re_cmd = "mpirun -np {:d} {} -meshname {} -simID {} {} {} {}".format(n_cores, carp_exec, intra_mesh_name,
+                                                                         sim_dir + sim_id,
+                                                                         imp, num, stim)
+
+    rec_cmd = " ".join(["-experiment 4",
+                        "-dump_ecg_leads 1",
+                        "-post_processing_opts 1",
+                        "-phie_rec_ptf {}".format(electrode_file)
+                        ])
+
+    return re_cmd, rec_cmd
+
+
+def create_re_stim_file(meshtool_exec, intra_mesh_name, sim_dir, sim_id):
+    """
+    Create stimulus file for reaction eikonal simulation
+    Args:
+        meshtool_exec (str): (path +) name of meshtool executable
+        intra_mesh_name (str): name of intracellular mesh
+        sim_dir (str): name of simulation directory
+        sim_id (str): name of simulation ID (folder)
+
+    """
+
+    stim_file = sim_dir + sim_id + "-pp_i.dat"
+    if not os.path.isfile(stim_file):
+        # extract post processed activation file onto intracellular grid using meshtool
+        act_file_pp = sim_dir + sim_id + "-pp.dat"
+        os.system("{} extract data -submsh={} -msh_data={} -submsh_data={}".format(meshtool_exec, intra_mesh_name,
+                                                                                   act_file_pp, stim_file))
+
+def write_re_phie_slurm(carp_exec, n_cores, intra_mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags, cv_list,
+                        job_name, script_name, time_limit):
+
+    # build header
+    header = st.generate_header(n_cores, job_name, time_limit)
+
+    # add array job command
+    total_jobs = len(cv_list)
+    if total_jobs > 1:
+        header += st.add_job_array_options(n_cores, 0, total_jobs-1)
+
+    # source modules from bashrc
+    bash = st.source_bashrc()
+
+    # create cv array
+    cv_str = "\" \"".join(str(cv) for cv in cv_list)
+    cv_arr = "declare -a cv_list=({})".format(cv_str)
+
+    # build simulation command line
+    re_cmd, rec_cmd = create_re_phie_cmd_line(carp_exec, n_cores, intra_mesh_name, sim_dir, sim_id, electrode_file,
+                                              stim_file, tags)
+
+    # write script
+    script = "\n\n".join([header, bash, cv_arr, re_cmd, re_cmd+rec_cmd])
+    with open(script_name, 'w') as f:
+        f.write(script)
+
 def main():
-    print("test")
+    # TODO create function to check simulation files and directories
+    # define tags
+    tags = {'he': 2, 'bz': 6, 'rv': 9, 'he_fec': 202, 'bz_fec': 206, 'sc_fec': 205, 'rv_fec': 209}
+    file_name = "test"
+    cv_lon = 0.6
+    stim_node = 0
+    biv = True
+    ekbatch_exec = "ekbatch"
+    mesh_name = "pig"
+    sim_dir = "."  # TODO this will need to be checked
+    sim_id = "test_cmd"
+    cv_list = [0.6, 0.7]
+
+    write_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv)
+
+    cmd = create_ekbatch_cmd_line(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, cv_list, biv, tags)
+    print(cmd)
+
+    job_name = "job"
+    script_name = "test_job.sh"
+    n_cores = 256
+    time_limit = 24
+    write_ekbatch_slurm(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, cv_list, biv, tags,
+                        job_name, script_name, n_cores, time_limit)
 
 
 if __name__ == "__main__":
