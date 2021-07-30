@@ -5,6 +5,7 @@ import ecg_tools as et
 import slurm_tools as st
 import vcg_analysis as vg
 
+
 def write_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv):
     """ Build and write init file for ekbatch simulation
 
@@ -38,7 +39,7 @@ def write_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv):
 
         # define header
         header = "vf:1.000000 vs:1.000000 vn:1.000000 vPS:4.000000\nretro_delay:3.000000 antero_delay:10.000000"  # keep this fixed
-        stim_def = "{:d} 0.00000".format(stim_node)
+        stim_def = "{:d} 0.00000".format(stim_node)  # TODO allow more stim nodes
 
         # create script string
         if biv:
@@ -95,9 +96,9 @@ def create_ekbatch_cmd_line(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node,
 
     return cmd
 
+
 def write_ekbatch_slurm(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, cv_list, biv, tags,
                         job_name, script_name, n_cores, time_limit):
-
     # build header
     header = st.generate_header(n_cores, job_name, time_limit)
 
@@ -442,9 +443,9 @@ def create_re_phie_cmd_line(carp_exec, n_cores, intra_mesh_name, sim_dir, sim_id
                      "-stimulus[1].duration 2.0"
                      ])
 
-    re_cmd = "mpirun -np {:d} {} -meshname {} -simID {} {} {} {}".format(n_cores, carp_exec, intra_mesh_name,
-                                                                         sim_dir + sim_id,
-                                                                         imp, num, stim)
+    re_cmd = "mpirun -np {:d} {} -meshname {} -simID {}/{} {} {} {}".format(n_cores, carp_exec, intra_mesh_name,
+                                                                            sim_dir, sim_id,
+                                                                            imp, num, stim)
 
     rec_cmd = " ".join(["-experiment 4",
                         "-dump_ecg_leads 1",
@@ -473,32 +474,37 @@ def create_re_stim_file(meshtool_exec, intra_mesh_name, sim_dir, sim_id):
         os.system("{} extract data -submsh={} -msh_data={} -submsh_data={}".format(meshtool_exec, intra_mesh_name,
                                                                                    act_file_pp, stim_file))
 
+
 def write_re_phie_slurm(carp_exec, n_cores, intra_mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags, cv_list,
                         job_name, script_name, time_limit):
-
     # build header
     header = st.generate_header(n_cores, job_name, time_limit)
 
     # add array job command
     total_jobs = len(cv_list)
     if total_jobs > 1:
-        header += st.add_job_array_options(n_cores, 0, total_jobs-1)
+        header = "\n".join([header, st.add_job_array_options(n_cores, 0, total_jobs - 1)])
 
     # source modules from bashrc
     bash = st.source_bashrc()
 
     # create cv array
-    cv_str = "\" \"".join(str(cv) for cv in cv_list)
+    cv_str = ""
+    for cv_lon in cv_list:
+        cv_str += "\"{:1.2f}\" ".format(cv_lon)
     cv_arr = "declare -a cv_list=({})".format(cv_str)
 
     # build simulation command line
-    re_cmd, rec_cmd = create_re_phie_cmd_line(carp_exec, n_cores, intra_mesh_name, sim_dir, sim_id, electrode_file,
-                                              stim_file, tags)
+    cv_sim_id = "{}-${{cv_list[$SLURM_ARRAY_TASK_ID]}}".format(sim_id)  # array job
+    cv_stim_file = "{}-${{cv_list[$SLURM_ARRAY_TASK_ID]}}".format(stim_file)
+    re_cmd, rec_cmd = create_re_phie_cmd_line(carp_exec, n_cores, intra_mesh_name, sim_dir, cv_sim_id, electrode_file,
+                                              cv_stim_file, tags)
 
     # write script
-    script = "\n\n".join([header, bash, cv_arr, re_cmd, re_cmd+rec_cmd])
+    script = "\n\n".join([header, bash, cv_arr, re_cmd, re_cmd + rec_cmd])
     with open(script_name, 'w') as f:
         f.write(script)
+
 
 def main():
     # TODO create function to check simulation files and directories
@@ -516,15 +522,19 @@ def main():
 
     write_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv)
 
-    cmd = create_ekbatch_cmd_line(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, cv_list, biv, tags)
-    print(cmd)
-
     job_name = "job"
     script_name = "test_job.sh"
     n_cores = 256
     time_limit = 24
     write_ekbatch_slurm(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, cv_list, biv, tags,
                         job_name, script_name, n_cores, time_limit)
+
+    carp_exec = "carp.pt"
+    electrode_file = "test_electrodes"
+    stim_file = "rv_test"
+    script_name = "test_job_re.sh"
+    write_re_phie_slurm(carp_exec, n_cores, mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags, cv_list,
+                        job_name, script_name, time_limit)
 
 
 if __name__ == "__main__":

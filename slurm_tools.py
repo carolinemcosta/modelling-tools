@@ -25,8 +25,7 @@ def generate_header(n_cores, job_name, time_limit):
                         "#SBATCH -J {}".format(job_name),
                         "#SBATCH -t 0-{:d}:00:00".format(time_limit),
                         "#SBATCH --nodes={:d}".format(n_nodes),
-                        "#SBATCH --ntasks-per-node={:d}".format(n_tasks),
-                        "\nexport OMP_NUM_THREADS = 1\n"
+                        "#SBATCH --ntasks-per-node={:d}".format(n_tasks)
                         ])
 
     return header
