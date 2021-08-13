@@ -465,6 +465,8 @@ def create_re_stim_file(meshtool_exec, intra_mesh_name, sim_dir, sim_id):
         sim_dir (str): name of simulation directory
         sim_id (str): name of simulation ID (folder)
 
+    Returns:
+        stim_file (str): name of stimulus file created
     """
 
     stim_file = sim_dir + sim_id + "-pp_i.dat"
@@ -473,6 +475,8 @@ def create_re_stim_file(meshtool_exec, intra_mesh_name, sim_dir, sim_id):
         act_file_pp = sim_dir + sim_id + "-pp.dat"
         os.system("{} extract data -submsh={} -msh_data={} -submsh_data={}".format(meshtool_exec, intra_mesh_name,
                                                                                    act_file_pp, stim_file))
+
+    return stim_file
 
 
 def write_re_phie_slurm(carp_exec, n_cores, intra_mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags, cv_list,
@@ -507,34 +511,80 @@ def write_re_phie_slurm(carp_exec, n_cores, intra_mesh_name, sim_dir, sim_id, el
 
 
 def main():
-    # TODO create function to check simulation files and directories
-    # define tags
-    tags = {'he': 2, 'bz': 6, 'rv': 9, 'he_fec': 202, 'bz_fec': 206, 'sc_fec': 205, 'rv_fec': 209}
-    file_name = "test"
-    cv_lon = 0.6
-    stim_node = 0
-    biv = True
+    # example of parameterization pipeline
+
+    # define executable
     ekbatch_exec = "ekbatch"
-    mesh_name = "pig"
-    sim_dir = "."  # TODO this will need to be checked
-    sim_id = "test_cmd"
-    cv_list = [0.6, 0.7]
-
-    write_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv)
-
-    job_name = "job"
-    script_name = "test_job.sh"
-    n_cores = 256
-    time_limit = 24
-    write_ekbatch_slurm(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, cv_list, biv, tags,
-                        job_name, script_name, n_cores, time_limit)
-
     carp_exec = "carp.pt"
-    electrode_file = "test_electrodes"
-    stim_file = "rv_test"
-    script_name = "test_job_re.sh"
-    write_re_phie_slurm(carp_exec, n_cores, mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags, cv_list,
-                        job_name, script_name, time_limit)
+    meshtool_exec = "meshtool"
+
+    # define mesh tags
+    tags = {'he': 2, 'bz': 6, 'rv': 9, 'he_fec': 202, 'bz_fec': 206, 'sc_fec': 205, 'rv_fec': 209}
+    biv = True # mesh type
+
+    # define mesh files
+    mesh_name = "pig"
+    intra_mesh_name = "pig_i"
+    base_vtx_file = "pig_base.vtx"
+    rv_septum_vtx = "pig_rv_septum.vtx"
+    electrode_file = "pig_electrodes"
+
+    # define directories
+    uvc_dir = "uvc"
+    sim_dir = "pig_parameterization"
+    sim_id = "pig_biv"
+
+    # define experimental QRSd file or value
+    qrsd_exp_file = "pig_qrs.dat"
+    qrsd_exp = np.loadtxt(qrsd_exp_file, usecols=2, dtype=float)  # usually the third line on the file
+
+    # define cores
+    n_cores = 12
+    time_limit = 24  # for HPC only
+
+    # run initial parameterization using total activation time
+    cv_step = 0.01
+    tact_cv_min = 0.36
+    tact_cv_max = 0.96
+    tact_cv_list = np.arange(tact_cv_min, tact_cv_max + cv_step, cv_step)
+
+    stim_node = get_rv_pacing_location(mesh_name, uvc_dir, rv_septum_vtx)
+
+    # run locally
+    ekbatch_cmd = create_ekbatch_cmd_line(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, tact_cv_list, biv, tags)
+    os.system(ekbatch_cmd)
+
+    # or run on TOM2 using array job
+    # job_name = "job"
+    # script_name = "array_ekbatch_job.sh"
+    # write_ekbatch_slurm(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, tact_cv_list, biv, tags,
+    #                     job_name, script_name, n_cores, time_limit)
+
+    best_total_act_cv = fit_cv_to_total_act(sim_dir, sim_id, tact_cv_list, qrsd_exp, base_vtx_file)
+
+    # refine parameters using simulated QRSd
+    qrsd_interval = 0.3
+    qrsd_cv_min = max([best_total_act_cv - qrsd_interval, tact_cv_min])
+    qrsd_cv_max = min([best_total_act_cv + qrsd_interval, tact_cv_max])
+    qrsd_cv_list = np.arange(qrsd_cv_min, qrsd_cv_max + cv_step, cv_step)
+
+    # run locally
+    for cv in qrsd_cv_list:
+        cv_sim_id = "{}-{:1.2f}".format(sim_id, cv)
+        stim_file = create_re_stim_file(meshtool_exec, intra_mesh_name, sim_dir, cv_sim_id)
+        re_cmd = create_re_phie_cmd_line(carp_exec, n_cores, intra_mesh_name, sim_dir, cv_sim_id, electrode_file, stim_file, tags)
+        os.system(re_cmd)
+
+    # or run all on TOM2 using array job
+    # script_name = "array_job_re.sh"
+    # write_re_phie_slurm(carp_exec, n_cores, mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags, tact_cv_list,
+    #                     job_name, script_name, time_limit)
+
+    vcg_thresh = 0.3
+    qrsd_sim, flag = compute_ecg_and_qrsd(sim_dir, sim_id, qrsd_cv_list, vcg_thresh)
+    best_qrsd_cv = fit_cv_to_qrs(sim_dir, sim_id, qrsd_cv_list, qrsd_exp, qrsd_sim)
+
+    print(best_qrsd_cv)
 
 
 if __name__ == "__main__":
