@@ -1,5 +1,6 @@
 import os
 
+
 def write_cgal_config_file(script_name, image_name, mesh_name, myo_res, bath_res, bath_tag,
                            rv_pool_tag=-1, lv_pool_tag=-1, facet_angle=30, facet_distance=0.5,
                            edge_size=0.5, cell_radius_edge_ratio=1.5, n_threads=8):
@@ -24,32 +25,35 @@ def write_cgal_config_file(script_name, image_name, mesh_name, myo_res, bath_res
           Writes out a yaml file with configuration parameters for cgalmeshmultilabel
     """
 
-    # set RV and LV blood pool tags depending on arguments passed: if not passed, set as bath_tag
-    if rv_pool_tag < 0:
-        rv_pool_tag = bath_tag
-    if lv_pool_tag < 0:
-        lv_pool_tag = bath_tag
+    if not os.path.isfile(script_name):
+        # set RV and LV blood pool tags depending on arguments passed: if not passed, set as bath_tag
+        if rv_pool_tag < 0:
+            rv_pool_tag = bath_tag
+        if lv_pool_tag < 0:
+            lv_pool_tag = bath_tag
 
-    # build dictionary with config parameters
-    config = {"input_img": image_name,
-              "output_carp": mesh_name,
-              "output_vtk": "{}.vtk".format(mesh_name),
-              "facet_angle": facet_angle,
-              "facet_size": myo_res,
-              "facet_distance": facet_distance,
-              "cell_radius_edge_ratio": cell_radius_edge_ratio,
-              "cell_size": myo_res,
-              "edge_size": edge_size,
-              "bath_size": bath_res,
-              "bath_tag": bath_tag,
-              "rvp_tag": rv_pool_tag,
-              "lvp_tag": lv_pool_tag,
-              "tbb_threads": n_threads
-              }
+        # build dictionary with config parameters
+        config = {"input_img": image_name,
+                  "output_carp": mesh_name,
+                  "output_vtk": "{}.vtk".format(mesh_name),
+                  "facet_angle": facet_angle,
+                  "facet_size": myo_res,
+                  "facet_distance": facet_distance,
+                  "cell_radius_edge_ratio": cell_radius_edge_ratio,
+                  "cell_size": myo_res,
+                  "edge_size": edge_size,
+                  "bath_size": bath_res,
+                  "bath_tag": bath_tag,
+                  "rvp_tag": rv_pool_tag,
+                  "lvp_tag": lv_pool_tag,
+                  "tbb_threads": n_threads
+                  }
 
-    # write dictionary to text file
-    with open(script_name, 'w') as f:
-        print(config, file=f)
+        # write dictionary to text file
+        with open(script_name, 'w') as f:
+            for key, value in config.items():
+                f.write('%s: %s\n' % (key, value))
+            # print(config, file=f)
 
 
 def convert_nrrd_to_inr(segconvert_bin, image_name):
@@ -114,4 +118,18 @@ def smooth_myo_surface(meshtool_bin, mesh_name, smooth_mesh, myo_tags):
             mesh_name,
             mesh_name,
             smooth_mesh)
+        os.system(cmd)
+
+
+def extract_sub_mesh(meshtool_bin, mesh_name, output_mesh, tags_list):
+    if os.path.isfile(mesh_name + ".elem") and not os.path.isfile(output_mesh + ".elem"):
+        print("Extracting sub mesh...")
+
+        # extract surface surrounding the myocardium
+        cmd = "{} extract mesh -msh={} -tags={} -submsh={} -ofmt=vtk -ifmt=carp_txt".format(
+            meshtool_bin,
+            mesh_name,
+            ",".join(str(t) for t in tags_list),
+            output_mesh)
+
         os.system(cmd)

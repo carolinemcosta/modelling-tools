@@ -520,7 +520,12 @@ def main():
 
     # define mesh tags
     tags = {'he': 2, 'bz': 6, 'rv': 9, 'he_fec': 202, 'bz_fec': 206, 'sc_fec': 205, 'rv_fec': 209}
-    biv = True # mesh type
+    biv = True  # mesh type
+
+    # define directories
+    uvc_dir = "uvc"
+    sim_dir = "pig_parameterization"
+    sim_id = "pig_biv"
 
     # define mesh files
     mesh_name = "pig"
@@ -528,11 +533,6 @@ def main():
     base_vtx_file = "pig_base.vtx"
     rv_septum_vtx = "pig_rv_septum.vtx"
     electrode_file = "pig_electrodes"
-
-    # define directories
-    uvc_dir = "uvc"
-    sim_dir = "pig_parameterization"
-    sim_id = "pig_biv"
 
     # define experimental QRSd file or value
     qrsd_exp_file = "pig_qrs.dat"
