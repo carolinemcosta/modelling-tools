@@ -14,8 +14,8 @@ def main():
 
     # directories
     base_dir = "/data2/KCL/Martin/"
-    seg_dir = base_dir + "segs/high-res-smooth/"
-    ex_dir = base_dir + "fit_cv_example/"
+    seg_dir = os.path.join(base_dir, "segs/high-res-smooth/")
+    ex_dir = os.path.join(base_dir, "fit_cv_example/")
 
     # resolutions
     mesh_res = 2.
@@ -28,8 +28,6 @@ def main():
     seg_name = os.path.join(seg_dir, "pig{:d}-biv-segModel-smooth-0.05-ff-1.0-base-bath".format(pig))
     mesh_name = os.path.join(ex_dir, "pig{:d}-biv-{:d}mm".format(pig, int(mesh_res)))
     config_name = mesh_name + "-config.yaml"
-
-    print(config_name)
 
     # mesh/image tags
     myo_tags = [2, 5, 6, 9]
@@ -58,6 +56,21 @@ def main():
     # remove scar
     intra_mesh = myo_mesh + "_i"
     extract_sub_mesh(meshtool_bin, myo_mesh, intra_mesh, intra_tags)
+
+    # map UVC
+    no_scar_mesh = "pig{:d}-biv-smooth-0.05-ff-1.0-base-bath-0.25-surfsmoothing-no-bath-no-scar".format(pig)
+    in_mesh_name = os.path.join(base_dir, "biv-meshes/{}".format(no_scar_mesh))
+    in_uvc_dir = os.path.join(base_dir, "biv-meshes/uvc/{}.uvc/UVC".format(no_scar_mesh))
+    out_uvc_dir = os.path.join(ex_dir, "UVC")
+    os.makedirs(out_uvc_dir, exist_ok=True)
+    coord_names = ["COORDS_PHI_ROT.dat", "COORDS_RHO.dat", "COORDS_Z.dat", "COORDS_V.dat"]
+    for coord_name in coord_names:
+        if not os.path.isfile(in_uvc_dir + coord_name):
+            cmd = "{} interpolate nodedata -omsh={} -imsh={} -idat={}/{} -odat={}/{}".format(meshtool_bin,
+                                                                                             myo_mesh, in_mesh_name,
+                                                                                             in_uvc_dir, coord_name,
+                                                                                             out_uvc_dir, coord_name)
+            os.system(cmd)
 
 
 if __name__ == "__main__":
