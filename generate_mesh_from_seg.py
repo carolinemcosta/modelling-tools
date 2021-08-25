@@ -124,14 +124,50 @@ def smooth_myo_surface(meshtool_bin, mesh_name, smooth_mesh, myo_tags):
 
 
 def extract_sub_mesh(meshtool_bin, mesh_name, output_mesh, tags_list):
+    """
+
+    Args:
+        meshtool_bin:
+        mesh_name:
+        output_mesh:
+        tags_list:
+
+    Returns:
+
+    """
     if os.path.isfile(mesh_name + ".elem") and not os.path.isfile(output_mesh + ".elem"):
         print("Extracting sub mesh...")
 
-        # extract surface surrounding the myocardium
+        # extract submesh defined by tags list
         cmd = "{} extract mesh -msh={} -tags={} -submsh={} -ofmt=carp_txt".format(
             meshtool_bin,
             mesh_name,
             ",".join(str(t) for t in tags_list),
             output_mesh)
+
+        os.system(cmd)
+
+
+def extract_surface(meshtool_bin, mesh_name, surf_name, tag_op):
+    """
+
+    Args:
+        meshtool_bin:
+        mesh_name:
+        surf_name:
+        tag_op:
+
+    Returns:
+
+    """
+    if os.path.isfile(mesh_name + ".elem") and not os.path.isfile(surf_name + ".elem"):
+        print("Extracting surface...")
+
+        # extract surface using operation list
+        cmd = "{} extract surface -msh={} -surf={} -op={} -ofmt=carp_txt".format(
+            meshtool_bin,
+            mesh_name,
+            surf_name,
+            tag_op)
 
         os.system(cmd)

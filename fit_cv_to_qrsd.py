@@ -6,13 +6,13 @@ import slurm_tools as st
 import vcg_analysis as vg
 
 
-def write_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv):
+def write_ekbatch_init_file(file_name, cv_lon, stim_nodes, tags, biv):
     """ Build and write init file for ekbatch simulation
 
     Args:
         file_name (string): script file name
         cv_lon (float): longitudinal CV
-        stim_node (int): number of stimulus node
+        stim_nodes (NumPy array): number of stimulus node
         tags (dict): tags definition for each mesh region
         biv (bool): consider bi-ventricular mesh if true
 
@@ -39,16 +39,20 @@ def write_ekbatch_init_file(file_name, cv_lon, stim_node, tags, biv):
 
         # define header
         header = "vf:1.000000 vs:1.000000 vn:1.000000 vPS:4.000000\nretro_delay:3.000000 antero_delay:10.000000"  # keep this fixed
-        stim_def = "{:d} 0.00000".format(stim_node)  # TODO allow more stim nodes
+
+        # define stim nodes
+        n_stim = stim_nodes.size
+        stim_region = "{:d} {:d}".format(n_stim, len(tags))
+        stim_def = ""
+        for node in [stim_nodes]:
+            stim_def += "{:d} 0.00000\n".format(node)
 
         # create script string
         if biv:
-            stim_region = "1 7"
             script = "\n".join([header, stim_region, stim_def,
                                 cv_reg_he, cv_reg_bz, cv_reg_rv,
                                 cv_reg_he_fec, cv_reg_bz_fec, cv_reg_sc_fec, cv_reg_rv_fec])
         else:
-            stim_region = "1 5"
             script = "\n".join([header, stim_region, stim_def,
                                 cv_reg_he, cv_reg_bz,
                                 cv_reg_he_fec, cv_reg_bz_fec, cv_reg_sc_fec])
@@ -126,7 +130,7 @@ def post_process_act(file_name):
     """
 
     act_file = file_name + ".dat"
-    act_file_pp = file_name + "-pp.dat"
+    act_file_pp = file_name + "_pp.dat"
 
     if not os.path.isfile(act_file_pp):
         act = np.loadtxt(act_file, dtype=float)
@@ -147,8 +151,8 @@ def compute_total_base_act(act_file, base_vtx_file):
 
     """
 
-    act_file_pp = act_file + "-pp.dat"
-    total_act_file = act_file + "-pp.total_act"
+    act_file_pp = act_file + "_pp.dat"
+    total_act_file = act_file + "_pp.total_act"
     if not os.path.isfile(total_act_file):
         base_nodes = np.loadtxt(base_vtx_file, skiprows=2, dtype=int)
         act = np.loadtxt(act_file_pp)
@@ -269,7 +273,7 @@ def fit_cv_to_total_act(sim_dir, sim_id, cv_list, qrs_d, base_vtx_file):
         # compute difference between the total activation for each CV and the experimental QRS duration
         for i in indices:
             # remove inf values
-            file_name = sim_dir + sim_id + "-{:1.2f}".format(cv_list[i])
+            file_name = sim_dir + sim_id + "_{:1.2f}".format(cv_list[i])
             post_process_act(file_name)
 
             # get base total act
@@ -510,82 +514,3 @@ def write_re_phie_slurm(carp_exec, n_cores, intra_mesh_name, sim_dir, sim_id, el
         f.write(script)
 
 
-def main():
-    # example of parameterization pipeline
-
-    # define executable
-    ekbatch_exec = "ekbatch"
-    carp_exec = "carp.pt"
-    meshtool_exec = "meshtool"
-
-    # define mesh tags
-    tags = {'he': 2, 'bz': 6, 'rv': 9, 'he_fec': 202, 'bz_fec': 206, 'sc_fec': 205, 'rv_fec': 209}
-    biv = True  # mesh type
-
-    # define directories
-    uvc_dir = "uvc"
-    sim_dir = "pig_parameterization"
-    sim_id = "pig_biv"
-
-    # define mesh files
-    mesh_name = "pig"
-    intra_mesh_name = "pig_i"
-    base_vtx_file = "pig_base.vtx"
-    rv_septum_vtx = "pig_rv_septum.vtx"
-    electrode_file = "pig_electrodes"
-
-    # define experimental QRSd file or value
-    qrsd_exp_file = "pig_qrs.dat"
-    qrsd_exp = np.loadtxt(qrsd_exp_file, usecols=2, dtype=float)  # usually the third line on the file
-
-    # define cores
-    n_cores = 12
-    time_limit = 24  # for HPC only
-
-    # run initial parameterization using total activation time
-    cv_step = 0.01
-    tact_cv_min = 0.36
-    tact_cv_max = 0.96
-    tact_cv_list = np.arange(tact_cv_min, tact_cv_max + cv_step, cv_step)
-
-    stim_node = get_rv_pacing_location(mesh_name, uvc_dir, rv_septum_vtx)
-
-    # run locally
-    ekbatch_cmd = create_ekbatch_cmd_line(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, tact_cv_list, biv, tags)
-    os.system(ekbatch_cmd)
-
-    # or run on TOM2 using array job
-    # job_name = "job"
-    # script_name = "array_ekbatch_job.sh"
-    # write_ekbatch_slurm(ekbatch_exec, mesh_name, sim_dir, sim_id, stim_node, tact_cv_list, biv, tags,
-    #                     job_name, script_name, n_cores, time_limit)
-
-    best_total_act_cv = fit_cv_to_total_act(sim_dir, sim_id, tact_cv_list, qrsd_exp, base_vtx_file)
-
-    # refine parameters using simulated QRSd
-    qrsd_interval = 0.3
-    qrsd_cv_min = max([best_total_act_cv - qrsd_interval, tact_cv_min])
-    qrsd_cv_max = min([best_total_act_cv + qrsd_interval, tact_cv_max])
-    qrsd_cv_list = np.arange(qrsd_cv_min, qrsd_cv_max + cv_step, cv_step)
-
-    # run locally
-    for cv in qrsd_cv_list:
-        cv_sim_id = "{}-{:1.2f}".format(sim_id, cv)
-        stim_file = create_re_stim_file(meshtool_exec, intra_mesh_name, sim_dir, cv_sim_id)
-        re_cmd = create_re_phie_cmd_line(carp_exec, n_cores, intra_mesh_name, sim_dir, cv_sim_id, electrode_file, stim_file, tags)
-        os.system(re_cmd)
-
-    # or run all on TOM2 using array job
-    # script_name = "array_job_re.sh"
-    # write_re_phie_slurm(carp_exec, n_cores, mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags, tact_cv_list,
-    #                     job_name, script_name, time_limit)
-
-    vcg_thresh = 0.3
-    qrsd_sim, flag = compute_ecg_and_qrsd(sim_dir, sim_id, qrsd_cv_list, vcg_thresh)
-    best_qrsd_cv = fit_cv_to_qrs(sim_dir, sim_id, qrsd_cv_list, qrsd_exp, qrsd_sim)
-
-    print(best_qrsd_cv)
-
-
-if __name__ == "__main__":
-    main()
