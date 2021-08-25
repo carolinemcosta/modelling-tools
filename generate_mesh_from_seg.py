@@ -86,7 +86,8 @@ def generate_cgal_multi_label_mesh(cgal_bin, mesh_name, config_script):
 
     if not os.path.isfile(mesh_name + ".elem"):
         print("Generating CGAL mesh...")
-        cmd = "{} {} {}".format(cgal_bin, mesh_name, config_script)
+        cmd = "{} {}".format(cgal_bin, config_script)
+        print(cmd)
         os.system(cmd)
 
 
@@ -108,8 +109,9 @@ def smooth_myo_surface(meshtool_bin, mesh_name, smooth_mesh, myo_tags):
         cmd = "{} extract surface -msh={} -surf={}-outer -op={} -ofmt=carp_txt".format(meshtool_bin,
                                                                                        mesh_name,
                                                                                        mesh_name,
-                                                                                       " ".join(
+                                                                                       ",".join(
                                                                                            str(t) for t in myo_tags))
+        print(cmd)
         os.system(cmd)
 
         # smooth the surface surrounding the myocardium
@@ -126,7 +128,7 @@ def extract_sub_mesh(meshtool_bin, mesh_name, output_mesh, tags_list):
         print("Extracting sub mesh...")
 
         # extract surface surrounding the myocardium
-        cmd = "{} extract mesh -msh={} -tags={} -submsh={} -ofmt=vtk -ifmt=carp_txt".format(
+        cmd = "{} extract mesh -msh={} -tags={} -submsh={} -ofmt=carp_txt".format(
             meshtool_bin,
             mesh_name,
             ",".join(str(t) for t in tags_list),

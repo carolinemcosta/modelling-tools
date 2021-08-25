@@ -29,6 +29,8 @@ def main():
     mesh_name = os.path.join(ex_dir, "pig{:d}-biv-{:d}mm".format(pig, int(mesh_res)))
     config_name = mesh_name + "-config.yaml"
 
+    print(config_name)
+
     # mesh/image tags
     myo_tags = [2, 5, 6, 9]
     intra_tags = [2, 6, 9]
@@ -50,11 +52,11 @@ def main():
     smooth_myo_surface(meshtool_bin, mesh_name, smooth_mesh, myo_tags)
 
     # remove bath
-    myo_mesh = smooth_mesh = "-no-bath"
+    myo_mesh = smooth_mesh + "-no-bath"
     extract_sub_mesh(meshtool_bin, smooth_mesh, myo_mesh, myo_tags)
 
     # remove scar
-    intra_mesh = myo_mesh = "-no-bath"
+    intra_mesh = myo_mesh + "_i"
     extract_sub_mesh(meshtool_bin, myo_mesh, intra_mesh, intra_tags)
 
 
