@@ -85,7 +85,6 @@ def main():
     mapped_dir = os.path.join(ex_dir, "mapped_surfaces/")
     surf_dir = os.path.join(ex_dir, "surfaces/")
 
-
     # resolutions
     mesh_res = 2.
     bath_res = 8.

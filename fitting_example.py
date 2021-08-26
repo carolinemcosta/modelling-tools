@@ -83,8 +83,6 @@ def main():
         stim_file = create_re_stim_file(meshtool_bin, intra_mesh_name, sim_dir, cv_sim_id)
         re_cmd, rec_cmd = create_re_phie_cmd_line(carp_bin, n_cores, intra_mesh_name, sim_dir, cv_sim_id, electrode_file, stim_file, tags)
         # run RE sim
-        print(re_cmd)
-        print(" ".join([re_cmd, rec_cmd]))
         os.system(re_cmd)
         # run Phi recovery
         os.system(" ".join([re_cmd, rec_cmd]))
