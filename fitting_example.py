@@ -71,29 +71,34 @@ def main():
     best_total_act_cv = fit_cv_to_total_act(sim_dir, sim_id, tact_cv_list, qrsd_exp, base_vtx_file)
     print(best_total_act_cv)
 
-    # # refine parameters using simulated QRSd
-    # qrsd_interval = 0.3
-    # qrsd_cv_min = max([best_total_act_cv - qrsd_interval, tact_cv_min])
-    # qrsd_cv_max = min([best_total_act_cv + qrsd_interval, tact_cv_max])
-    # qrsd_cv_list = np.arange(qrsd_cv_min, qrsd_cv_max + cv_step, cv_step)
-    #
-    # # run locally
-    # for cv in qrsd_cv_list:
-    #     cv_sim_id = "{}-{:1.2f}".format(sim_id, cv)
-    #     stim_file = create_re_stim_file(meshtool_bin, intra_mesh_name, sim_dir, cv_sim_id)
-    #     re_cmd = create_re_phie_cmd_line(carp_bin, n_cores, intra_mesh_name, sim_dir, cv_sim_id, electrode_file, stim_file, tags)
-    #     os.system(re_cmd)
-    #
-    # # or run all on TOM2 using array job
-    # # script_name = "array_job_re.sh"
-    # # write_re_phie_slurm(carp_bin, n_cores, mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags, tact_cv_list,
-    # #                     job_name, script_name, time_limit)
-    #
-    # vcg_thresh = 0.3
-    # qrsd_sim, flag = compute_ecg_and_qrsd(sim_dir, sim_id, qrsd_cv_list, vcg_thresh)
-    # best_qrsd_cv = fit_cv_to_qrs(sim_dir, sim_id, qrsd_cv_list, qrsd_exp, qrsd_sim)
-    #
-    # print(best_qrsd_cv)
+    # refine parameters using simulated QRSd
+    qrsd_interval = 0.3
+    qrsd_cv_min = round(max([best_total_act_cv - qrsd_interval, tact_cv_min]), 2)
+    qrsd_cv_max = round(min([best_total_act_cv + qrsd_interval, tact_cv_max]), 2)
+    qrsd_cv_list = np.arange(qrsd_cv_min, qrsd_cv_max + cv_step, cv_step)
+
+    # run locally
+    for cv in qrsd_cv_list:
+        cv_sim_id = "{}_{:1.2f}".format(sim_id, cv)
+        stim_file = create_re_stim_file(meshtool_bin, intra_mesh_name, sim_dir, cv_sim_id)
+        re_cmd, rec_cmd = create_re_phie_cmd_line(carp_bin, n_cores, intra_mesh_name, sim_dir, cv_sim_id, electrode_file, stim_file, tags)
+        # run RE sim
+        print(re_cmd)
+        print(" ".join([re_cmd, rec_cmd]))
+        os.system(re_cmd)
+        # run Phi recovery
+        os.system(" ".join([re_cmd, rec_cmd]))
+
+    # or run all on TOM2 using array job
+    # script_name = "array_job_re.sh"
+    # write_re_phie_slurm(carp_bin, n_cores, mesh_name, sim_dir, sim_id, electrode_file, stim_file, tags, tact_cv_list,
+    #                     job_name, script_name, time_limit)
+
+    vcg_thresh = 0.3
+    qrsd_sim, flag = compute_ecg_and_qrsd(sim_dir, sim_id, qrsd_cv_list, vcg_thresh)
+    best_qrsd_cv = fit_cv_to_qrs(sim_dir, sim_id, qrsd_cv_list, qrsd_exp, qrsd_sim)
+
+    print(best_qrsd_cv)
 
 
 if __name__ == "__main__":

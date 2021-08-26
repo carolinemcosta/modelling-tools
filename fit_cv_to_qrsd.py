@@ -473,10 +473,10 @@ def create_re_stim_file(meshtool_exec, intra_mesh_name, sim_dir, sim_id):
         stim_file (str): name of stimulus file created
     """
 
-    stim_file = sim_dir + sim_id + "-pp_i.dat"
+    stim_file = sim_dir + sim_id + "_pp_i.dat"
     if not os.path.isfile(stim_file):
         # extract post processed activation file onto intracellular grid using meshtool
-        act_file_pp = sim_dir + sim_id + "-pp.dat"
+        act_file_pp = sim_dir + sim_id + "_pp.dat"
         os.system("{} extract data -submsh={} -msh_data={} -submsh_data={}".format(meshtool_exec, intra_mesh_name,
                                                                                    act_file_pp, stim_file))
 
